@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Jalankan browser terlihat, bukan headless.",
     )
+    parser.add_argument(
+        "--debug-text",
+        action="store_true",
+        help="Cetak ringkasan teks halaman untuk bantu set keyword.",
+    )
     return parser.parse_args()
 
 
@@ -121,6 +126,7 @@ def run(
     warmup_minutes: int,
     items: list[WatchItem],
     headed: bool,
+    debug_text: bool,
 ) -> int:
     pending = {item.name: item for item in items}
     renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed)
@@ -143,6 +149,9 @@ def run(
                 timestamp = now.strftime("%Y-%m-%d %H:%M:%S %z")
                 try:
                     page_text = renderer.fetch_text(item.url)
+                    if debug_text:
+                        preview = " ".join(page_text.split())[:500]
+                        print(f"[DEBUG] {item.name}: {preview}")
                     result = detect_flash_sale(
                         DetectionInput(
                             page_text=page_text,
@@ -176,7 +185,14 @@ def main() -> int:
     if args.timeout is not None:
         timeout_seconds = args.timeout
     print(f"Memantau {len(items)} item. Tekan Ctrl+C untuk berhenti.")
-    return run(interval_seconds, timeout_seconds, warmup_minutes, items, args.headed)
+    return run(
+        interval_seconds,
+        timeout_seconds,
+        warmup_minutes,
+        items,
+        args.headed,
+        args.debug_text,
+    )
 
 
 if __name__ == "__main__":
