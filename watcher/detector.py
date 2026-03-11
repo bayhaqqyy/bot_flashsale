@@ -16,11 +16,29 @@ class DetectionResult:
     is_active: bool
     reasons: list[str]
     state: str = "inactive"
+    prices: list[str] = field(default_factory=list)
 
 
 def normalize_text(text: str) -> str:
     lowered = text.lower()
     return re.sub(r"\s+", " ", lowered).strip()
+
+
+def extract_prices(text: str) -> list[str]:
+    patterns = [
+        r"rp\s?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?",
+        r"\d{1,3}(?:[.,]\d{3})+\s?rp",
+    ]
+    found: list[str] = []
+    seen: set[str] = set()
+    for pattern in patterns:
+        for match in re.findall(pattern, text, flags=re.I):
+            normalized = re.sub(r"\s+", " ", match).strip()
+            key = normalized.lower()
+            if key not in seen:
+                seen.add(key)
+                found.append(normalized)
+    return found
 
 
 def detect_flash_sale(data: DetectionInput) -> DetectionResult:
@@ -38,6 +56,7 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
             False,
             ["halaman yang terbaca adalah login/interstitial, bukan konten flash sale"],
             state="auth_wall",
+            prices=extract_prices(text),
         )
 
     active_keywords = [keyword.lower() for keyword in data.active_keywords if keyword.strip()]
@@ -59,7 +78,12 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
                 reasons.append("produk target terlihat")
 
         is_active = not missing_status and (not product_terms or not missing_terms)
-        return DetectionResult(is_active, reasons, state="active" if is_active else "inactive")
+        return DetectionResult(
+            is_active,
+            reasons,
+            state="active" if is_active else "inactive",
+            prices=extract_prices(text),
+        )
 
     missing_keywords = [keyword for keyword in active_keywords if keyword not in text]
     if not missing_keywords:
@@ -67,6 +91,7 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
             True,
             [f"keyword:{keyword}" for keyword in active_keywords],
             state="active",
+            prices=extract_prices(text),
         )
 
     generic_markers = [
@@ -78,4 +103,4 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
     matched = [label for needle, label in generic_markers if needle in text]
     reasons.append(f"keyword belum lengkap: {', '.join(missing_keywords)}")
     reasons.extend(matched or ["marker live belum terlihat"])
-    return DetectionResult(False, reasons, state="inactive")
+    return DetectionResult(False, reasons, state="inactive", prices=extract_prices(text))

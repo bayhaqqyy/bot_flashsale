@@ -160,6 +160,13 @@ def html_to_text(raw_html: str) -> str:
     return html.unescape(re.sub(r"\s+", " ", without_tags)).strip()
 
 
+def format_result(label: str, reasons: Iterable[str], prices: list[str]) -> str:
+    parts = [", ".join(reasons)]
+    if prices:
+        parts.append(f"harga: {', '.join(prices[:3])}")
+    return f"{label} ({'; '.join(parts)})"
+
+
 def analyze_local_file(
     file_path: str,
     *,
@@ -186,14 +193,14 @@ def analyze_local_file(
     )
 
     if result.is_active:
-        print(f"ACTIVE ({', '.join(result.reasons)})")
+        print(format_result("ACTIVE", result.reasons, result.prices))
         return 0
 
     if result.state == "auth_wall":
-        print(f"AUTH_WALL ({', '.join(result.reasons)})")
+        print(format_result("AUTH_WALL", result.reasons, result.prices))
         return 2
 
-    print(f"INACTIVE ({', '.join(result.reasons)})")
+    print(format_result("INACTIVE", result.reasons, result.prices))
     return 1
 
 
@@ -239,15 +246,21 @@ def run(
                         )
                     )
                     if result.is_active:
-                        print(f"[{timestamp}] {item.name}: ACTIVE")
+                        suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                        print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
                         alert(item, result.reasons)
                         pending.pop(item.name, None)
                         continue
                     if result.state == "auth_wall":
-                        print(f"[{timestamp}] {item.name}: perlu akses halaman publik ({', '.join(result.reasons)})")
+                        suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                        print(
+                            f"[{timestamp}] {item.name}: perlu akses halaman publik "
+                            f"({', '.join(result.reasons)}){suffix}"
+                        )
                         pending.pop(item.name, None)
                         continue
-                    print(f"[{timestamp}] {item.name}: belum aktif ({', '.join(result.reasons)})")
+                    suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                    print(f"[{timestamp}] {item.name}: belum aktif ({', '.join(result.reasons)}){suffix}")
                 except Exception as exc:  # pragma: no cover
                     print(f"[{timestamp}] {item.name}: error ({exc})")
 

@@ -1,6 +1,6 @@
 import unittest
 
-from watcher.detector import DetectionInput, detect_flash_sale
+from watcher.detector import DetectionInput, detect_flash_sale, extract_prices
 from flashsale_watcher import html_to_text
 
 
@@ -46,6 +46,10 @@ class DetectorTests(unittest.TestCase):
         text = html_to_text(raw_html)
         self.assertIn("Flash Sale sedang berjalan", text)
         self.assertIn("Dompet pria", text)
+
+    def test_extract_prices_finds_rupiah_values(self) -> None:
+        prices = extract_prices("Harga promo Rp12.000 lalu Rp9.500 untuk dompet.")
+        self.assertEqual(prices, ["Rp12.000", "Rp9.500"])
 
 
 if __name__ == "__main__":
