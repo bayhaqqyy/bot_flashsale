@@ -1,20 +1,28 @@
 # Flash Sale Watcher
 
-CLI Python untuk memantau halaman produk Shopee dan memberi alert saat indikator flash sale mulai muncul.
+CLI Python untuk memantau halaman Shopee yang sudah dirender browser dan memberi alert saat produk target muncul pada flash sale aktif.
 
 Batasan:
 - Tidak melakukan login, add-to-cart, atau checkout.
 - Tidak mencoba menghindari deteksi, rate limit, atau proteksi platform.
-- Deteksi berbasis konten halaman/keyword, jadi mungkin perlu disetel ulang jika markup Shopee berubah.
+- Deteksi berbasis teks halaman yang sudah dirender browser, jadi mungkin perlu disetel ulang jika layout Shopee berubah.
 
 ## Kebutuhan
 
 - Python 3.10+
+- Package pada `requirements.txt`
+- Browser Chromium untuk Playwright
 
 ## Cara pakai
 
-1. Salin `config.example.json` menjadi `config.json`.
-2. Isi daftar produk yang ingin dipantau.
+1. Install dependency:
+
+```powershell
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+2. Sesuaikan `config.json`.
 3. Jalankan:
 
 ```powershell
@@ -32,16 +40,17 @@ python flashsale_watcher.py --config config.json --interval 10 --timeout 8
 ```json
 {
   "interval_seconds": 15,
-  "timeout_seconds": 10,
+  "timeout_seconds": 15,
   "warmup_minutes": 15,
   "items": [
     {
       "name": "Produk A",
-      "url": "https://shopee.co.id/...",
-      "start_at": "2026-03-11T20:00:00+07:00",
+      "url": "https://shopee.co.id/flash_sale",
+      "page_type": "flash_sale",
+      "product_terms": ["dompet"],
       "active_keywords": [
         "flash sale",
-        "berlangsung"
+        "sedang berjalan"
       ]
     }
   ]
@@ -50,7 +59,9 @@ python flashsale_watcher.py --config config.json --interval 10 --timeout 8
 
 Catatan:
 - `start_at` opsional. Jika diisi, watcher akan santai dulu lalu masuk mode pemantauan aktif mendekati waktu tersebut.
-- `active_keywords` opsional. Jika diisi, item dianggap aktif bila semua keyword ini muncul pada HTML halaman.
+- `active_keywords` adalah tanda slot aktif pada halaman event.
+- `product_terms` adalah istilah produk yang harus muncul di daftar item aktif.
+- Tambahkan `--headed` jika Anda ingin melihat browser saat script berjalan.
 
 ## Test
 

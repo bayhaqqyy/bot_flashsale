@@ -1,5 +1,14 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
+
+
+@dataclass
+class DetectionInput:
+    page_text: str
+    page_type: str
+    active_keywords: list[str] = field(default_factory=list)
+    product_terms: list[str] = field(default_factory=list)
+    item_name: str = ""
 
 
 @dataclass
@@ -8,22 +17,39 @@ class DetectionResult:
     reasons: list[str]
 
 
-def normalize_text(html: str) -> str:
-    lowered = html.lower()
-    lowered = re.sub(r"\s+", " ", lowered)
-    return lowered
+def normalize_text(text: str) -> str:
+    lowered = text.lower()
+    return re.sub(r"\s+", " ", lowered).strip()
 
 
-def detect_flash_sale(html: str, active_keywords: list[str] | None = None) -> DetectionResult:
-    text = normalize_text(html)
+def detect_flash_sale(data: DetectionInput) -> DetectionResult:
+    text = normalize_text(data.page_text)
     reasons: list[str] = []
-    active_keywords = [keyword.lower() for keyword in (active_keywords or []) if keyword.strip()]
 
-    if active_keywords:
-        missing = [keyword for keyword in active_keywords if keyword not in text]
-        if not missing:
-            return DetectionResult(True, [f"keyword:{keyword}" for keyword in active_keywords])
-        reasons.append(f"keyword belum lengkap: {', '.join(missing)}")
+    active_keywords = [keyword.lower() for keyword in data.active_keywords if keyword.strip()]
+    product_terms = [term.lower() for term in data.product_terms if term.strip()]
+
+    if data.page_type == "flash_sale":
+        status_keywords = active_keywords or ["flash sale", "sedang berjalan"]
+        missing_status = [keyword for keyword in status_keywords if keyword not in text]
+        if missing_status:
+            reasons.append(f"status belum lengkap: {', '.join(missing_status)}")
+        else:
+            reasons.append("status aktif terdeteksi")
+
+        if product_terms:
+            missing_terms = [term for term in product_terms if term not in text]
+            if missing_terms:
+                reasons.append(f"produk belum terlihat: {', '.join(missing_terms)}")
+            else:
+                reasons.append("produk target terlihat")
+
+        is_active = not missing_status and (not product_terms or not missing_terms)
+        return DetectionResult(is_active, reasons)
+
+    missing_keywords = [keyword for keyword in active_keywords if keyword not in text]
+    if not missing_keywords:
+        return DetectionResult(True, [f"keyword:{keyword}" for keyword in active_keywords])
 
     generic_markers = [
         ("flash sale", "marker:flash sale"),
@@ -32,19 +58,6 @@ def detect_flash_sale(html: str, active_keywords: list[str] | None = None) -> De
         ("masukkan keranjang", "marker:masukkan keranjang"),
     ]
     matched = [label for needle, label in generic_markers if needle in text]
-
-    # Tanda yang cenderung berarti event sudah live, bukan hanya teaser.
-    live_combinations = [
-        ("flash sale", "berlangsung"),
-        ("flash sale", "habis dalam"),
-        ("flash sale", "tersisa"),
-        ("flash sale", "beli sekarang"),
-        ("flash sale", "masukkan keranjang"),
-    ]
-    is_live = any(all(part in text for part in combo) for combo in live_combinations)
-
-    if is_live:
-        return DetectionResult(True, matched or ["kombinasi marker live"])
-
+    reasons.append(f"keyword belum lengkap: {', '.join(missing_keywords)}")
     reasons.extend(matched or ["marker live belum terlihat"])
     return DetectionResult(False, reasons)
