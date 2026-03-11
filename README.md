@@ -1,11 +1,11 @@
 # Flash Sale Watcher
 
-CLI Python untuk memantau halaman Shopee yang sudah dirender browser dan memberi alert saat produk target muncul pada flash sale aktif.
+CLI Python untuk memantau halaman produk Shopee dan menampilkan harga yang terdeteksi dari produk target.
 
 Batasan:
 - Tidak melakukan login, add-to-cart, atau checkout.
 - Tidak mencoba menghindari deteksi, rate limit, atau proteksi platform.
-- Deteksi berbasis teks halaman yang sudah dirender browser, jadi mungkin perlu disetel ulang jika layout Shopee berubah.
+- Untuk halaman produk, script menggabungkan source HTML dan hasil render browser agar peluang menemukan harga lebih besar.
 
 ## Kebutuhan
 
@@ -52,12 +52,12 @@ python flashsale_watcher.py --html saved_page.html --page-type flash_sale --prod
   "items": [
     {
       "name": "Produk A",
-      "url": "https://shopee.co.id/flash_sale",
-      "page_type": "flash_sale",
+      "url": "https://shopee.co.id/produk-anda",
+      "page_type": "product",
       "product_terms": ["dompet"],
       "active_keywords": [
         "flash sale",
-        "sedang berjalan"
+        "beli sekarang"
       ]
     }
   ]
@@ -66,8 +66,8 @@ python flashsale_watcher.py --html saved_page.html --page-type flash_sale --prod
 
 Catatan:
 - `start_at` opsional. Jika diisi, watcher akan santai dulu lalu masuk mode pemantauan aktif mendekati waktu tersebut.
-- `active_keywords` adalah tanda slot aktif pada halaman event.
-- `product_terms` adalah istilah produk yang harus muncul di daftar item aktif.
+- `active_keywords` adalah tanda sale aktif pada halaman produk.
+- `product_terms` adalah istilah produk untuk membantu validasi konteks.
 - Tambahkan `--headed` jika Anda ingin melihat browser saat script berjalan.
 - Untuk mode file lokal, `--product` bisa diulang beberapa kali dan `--keyword` opsional.
 

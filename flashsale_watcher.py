@@ -4,6 +4,8 @@ import json
 import random
 import re
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,6 +13,16 @@ from typing import Iterable
 
 from watcher.detector import DetectionInput, detect_flash_sale
 from watcher.renderer import BrowserRenderer
+
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/123.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate",
+}
 
 
 @dataclass
@@ -160,6 +172,14 @@ def html_to_text(raw_html: str) -> str:
     return html.unescape(re.sub(r"\s+", " ", without_tags)).strip()
 
 
+def fetch_source_html(url: str, timeout_seconds: int) -> str:
+    request = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        raw_body = response.read()
+        encoding = response.headers.get_content_charset() or "utf-8"
+        return raw_body.decode(encoding, errors="ignore")
+
+
 def format_result(label: str, reasons: Iterable[str], prices: list[str]) -> str:
     parts = [", ".join(reasons)]
     if prices:
@@ -232,7 +252,16 @@ def run(
 
                 timestamp = now.strftime("%Y-%m-%d %H:%M:%S %z")
                 try:
-                    page_text = renderer.fetch_text(item.url)
+                    raw_texts: list[str] = []
+                    if item.page_type == "product":
+                        try:
+                            source_html = fetch_source_html(item.url, timeout_seconds)
+                            raw_texts.append(html_to_text(source_html))
+                        except (urllib.error.URLError, TimeoutError):
+                            pass
+
+                    raw_texts.append(renderer.fetch_text(item.url))
+                    page_text = "\n".join(part for part in raw_texts if part.strip())
                     if debug_text:
                         preview = " ".join(page_text.split())[:500]
                         print(f"[DEBUG] {item.name}: {preview}")
@@ -251,6 +280,11 @@ def run(
                         alert(item, result.reasons)
                         pending.pop(item.name, None)
                         continue
+                    if item.page_type == "product" and result.prices:
+                        print(
+                            f"[{timestamp}] {item.name}: harga terdeteksi "
+                            f"({', '.join(result.prices[:3])})"
+                        )
                     if result.state == "auth_wall":
                         suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
                         print(
