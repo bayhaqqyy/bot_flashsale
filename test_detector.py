@@ -1,6 +1,7 @@
 import unittest
 
 from watcher.detector import DetectionInput, detect_flash_sale
+from flashsale_watcher import html_to_text
 
 
 class DetectorTests(unittest.TestCase):
@@ -39,6 +40,12 @@ class DetectorTests(unittest.TestCase):
             )
         )
         self.assertTrue(result.is_active)
+
+    def test_html_to_text_extracts_content(self) -> None:
+        raw_html = "<html><body><div>Flash Sale sedang berjalan</div><p>Dompet pria</p></body></html>"
+        text = html_to_text(raw_html)
+        self.assertIn("Flash Sale sedang berjalan", text)
+        self.assertIn("Dompet pria", text)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 import argparse
+import html
 import json
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -47,6 +49,33 @@ def parse_args() -> argparse.Namespace:
         "--debug-text",
         action="store_true",
         help="Cetak ringkasan teks halaman untuk bantu set keyword.",
+    )
+    parser.add_argument(
+        "--from-file",
+        help="Path file teks lokal yang akan dianalisis sekali jalan.",
+    )
+    parser.add_argument(
+        "--html",
+        dest="html_file",
+        help="Path file HTML lokal yang akan diekstrak lalu dianalisis sekali jalan.",
+    )
+    parser.add_argument(
+        "--product",
+        action="append",
+        default=[],
+        help="Istilah produk target untuk mode --from-file/--html. Bisa diulang.",
+    )
+    parser.add_argument(
+        "--keyword",
+        action="append",
+        default=[],
+        help="Keyword status aktif untuk mode --from-file/--html. Bisa diulang.",
+    )
+    parser.add_argument(
+        "--page-type",
+        default="flash_sale",
+        choices=["flash_sale", "product"],
+        help="Tipe halaman untuk mode --from-file/--html.",
     )
     return parser.parse_args()
 
@@ -120,6 +149,54 @@ def alert(item: WatchItem, reasons: Iterable[str]) -> None:
     print("\a", end="")
 
 
+def summarize_text(text: str, limit: int = 500) -> str:
+    return " ".join(text.split())[:limit]
+
+
+def html_to_text(raw_html: str) -> str:
+    without_script = re.sub(r"<script.*?</script>", " ", raw_html, flags=re.I | re.S)
+    without_style = re.sub(r"<style.*?</style>", " ", without_script, flags=re.I | re.S)
+    without_tags = re.sub(r"<[^>]+>", " ", without_style)
+    return html.unescape(re.sub(r"\s+", " ", without_tags)).strip()
+
+
+def analyze_local_file(
+    file_path: str,
+    *,
+    treat_as_html: bool,
+    page_type: str,
+    product_terms: list[str],
+    active_keywords: list[str],
+    debug_text: bool,
+) -> int:
+    raw_text = Path(file_path).read_text(encoding="utf-8")
+    page_text = html_to_text(raw_text) if treat_as_html else raw_text
+
+    if debug_text:
+        print(f"[DEBUG] preview: {summarize_text(page_text)}")
+
+    result = detect_flash_sale(
+        DetectionInput(
+            page_text=page_text,
+            page_type=page_type,
+            active_keywords=[keyword.lower() for keyword in active_keywords],
+            product_terms=[term.lower() for term in product_terms],
+            item_name=file_path,
+        )
+    )
+
+    if result.is_active:
+        print(f"ACTIVE ({', '.join(result.reasons)})")
+        return 0
+
+    if result.state == "auth_wall":
+        print(f"AUTH_WALL ({', '.join(result.reasons)})")
+        return 2
+
+    print(f"INACTIVE ({', '.join(result.reasons)})")
+    return 1
+
+
 def run(
     interval_seconds: int,
     timeout_seconds: int,
@@ -182,6 +259,17 @@ def run(
 
 def main() -> int:
     args = parse_args()
+    if args.from_file or args.html_file:
+        source_path = args.from_file or args.html_file
+        return analyze_local_file(
+            source_path,
+            treat_as_html=bool(args.html_file),
+            page_type=args.page_type,
+            product_terms=args.product,
+            active_keywords=args.keyword,
+            debug_text=args.debug_text,
+        )
+
     config_path = Path(args.config)
     interval_seconds, timeout_seconds, warmup_minutes, items = load_config(str(config_path))
     if args.interval is not None:

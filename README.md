@@ -35,6 +35,13 @@ Opsi penting:
 python flashsale_watcher.py --config config.json --interval 10 --timeout 8
 ```
 
+Mode file lokal:
+
+```powershell
+python flashsale_watcher.py --from-file page.txt --page-type flash_sale --product dompet --keyword "flash sale" --keyword "sedang berjalan"
+python flashsale_watcher.py --html saved_page.html --page-type flash_sale --product dompet --keyword "flash sale" --keyword "sedang berjalan"
+```
+
 ## Format config
 
 ```json
@@ -62,6 +69,7 @@ Catatan:
 - `active_keywords` adalah tanda slot aktif pada halaman event.
 - `product_terms` adalah istilah produk yang harus muncul di daftar item aktif.
 - Tambahkan `--headed` jika Anda ingin melihat browser saat script berjalan.
+- Untuk mode file lokal, `--product` bisa diulang beberapa kali dan `--keyword` opsional.
 
 ## Test
 
