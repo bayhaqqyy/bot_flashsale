@@ -1,0 +1,15 @@
+{
+  "interval_seconds": 15,
+  "timeout_seconds": 10,
+  "warmup_minutes": 15,
+  "items": [
+    {
+      "name": "Dompet pria PL0045",
+      "url": "https://shopee.co.id/4.4-Gratis-Ongkir-Setiap-Hari!!-Dompet-pria-terlaris-harga-grosir-free-box-dompet-Kode-PL0045-i.152065129.12164204150",
+      "active_keywords": [
+        "flash sale",
+        "beli sekarang"
+      ]
+    }
+  ]
+}
