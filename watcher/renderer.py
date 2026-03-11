@@ -5,6 +5,7 @@ class BrowserRenderer:
         self._playwright = None
         self._browser = None
         self._page = None
+        self._context = None
 
     def __enter__(self) -> "BrowserRenderer":
         try:
@@ -17,7 +18,7 @@ class BrowserRenderer:
 
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self.headless)
-        context = self._browser.new_context(
+        self._context = self._browser.new_context(
             locale="id-ID",
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -25,24 +26,23 @@ class BrowserRenderer:
                 "Chrome/123.0.0.0 Safari/537.36"
             ),
         )
-        self._page = context.new_page()
+        self._page = self._context.new_page()
         self._page.set_default_timeout(self.timeout_ms)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        if self._page is not None:
-            self._page.context.close()
-        if self._browser is not None:
-            self._browser.close()
-        if self._playwright is not None:
-            self._playwright.stop()
+        for closer in (self._safe_close_context, self._safe_close_browser, self._safe_stop_playwright):
+            closer()
 
     def fetch_text(self, url: str) -> str:
         if self._page is None:
             raise RuntimeError("BrowserRenderer belum diinisialisasi.")
 
         self._page.goto(url, wait_until="domcontentloaded")
-        self._page.wait_for_load_state("networkidle")
+        try:
+            self._page.wait_for_load_state("networkidle", timeout=self.timeout_ms)
+        except Exception:
+            pass
         self._page.wait_for_timeout(2000)
         self._scroll_page()
         body = self._page.locator("body")
@@ -68,3 +68,34 @@ class BrowserRenderer:
 
         self._page.evaluate("window.scrollTo(0, 0)")
         self._page.wait_for_timeout(500)
+
+    def _safe_close_context(self) -> None:
+        if self._context is None:
+            return
+        try:
+            self._context.close()
+        except Exception:
+            pass
+        finally:
+            self._context = None
+            self._page = None
+
+    def _safe_close_browser(self) -> None:
+        if self._browser is None:
+            return
+        try:
+            self._browser.close()
+        except Exception:
+            pass
+        finally:
+            self._browser = None
+
+    def _safe_stop_playwright(self) -> None:
+        if self._playwright is None:
+            return
+        try:
+            self._playwright.stop()
+        except Exception:
+            pass
+        finally:
+            self._playwright = None

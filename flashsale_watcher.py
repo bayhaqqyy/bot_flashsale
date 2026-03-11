@@ -166,6 +166,10 @@ def run(
                         alert(item, result.reasons)
                         pending.pop(item.name, None)
                         continue
+                    if result.state == "auth_wall":
+                        print(f"[{timestamp}] {item.name}: perlu akses halaman publik ({', '.join(result.reasons)})")
+                        pending.pop(item.name, None)
+                        continue
                     print(f"[{timestamp}] {item.name}: belum aktif ({', '.join(result.reasons)})")
                 except Exception as exc:  # pragma: no cover
                     print(f"[{timestamp}] {item.name}: error ({exc})")
