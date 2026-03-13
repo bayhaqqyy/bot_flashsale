@@ -338,11 +338,11 @@ async def run(
                                 f"[{timestamp}] {item.name}: belum aktif "
                                 f"({', '.join(result.reasons)}) | status: {result.availability}{suffix}"
                             )
-                except Exception as exc:  # pragma: no cover
-                    print(f"[{timestamp}] {item.name}: error ({exc})")
+                        except Exception as exc:  # pragma: no cover
+                            print(f"[{timestamp}] {item.name}: error ({exc})")
 
-                jitter = random.uniform(0, 1.5)
-                await asyncio.sleep(interval_seconds + jitter)
+                        jitter = random.uniform(0, 1.5)
+                        await asyncio.sleep(interval_seconds + jitter)
 
         return 0
     finally:
