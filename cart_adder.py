@@ -73,26 +73,36 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
                     raise Exception("Tombol checkout tidak ditemukan")
                 await checkout_btn.click()
                 await page.wait_for_timeout(3000)
+                await page.wait_for_load_state("networkidle", timeout=10000)  # Tunggu halaman load
+                # Scroll ke bagian pembayaran jika perlu
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                await page.wait_for_timeout(1000)
                 print(f"✅ Tombol checkout diklik untuk {item_name}")
 
                 # Pilih metode pembayaran Transfer Bank
                 bank_transfer_option = None
-                for text in ["transfer bank", "bank transfer", "transfer"]:
+                for text in ["transfer bank", "bank transfer", "transfer", "bank"]:
                     try:
                         bank_transfer_option = page.locator(f"text=/{text}/i").first
-                        await bank_transfer_option.wait_for(state="visible", timeout=5000)
+                        await bank_transfer_option.wait_for(state="visible", timeout=10000)
                         print(f"✅ Opsi transfer bank ditemukan: {text}")
                         break
                     except:
                         continue
                 if bank_transfer_option is None:
-                    raise Exception("Opsi transfer bank tidak ditemukan")
+                    # Coba dengan selector lain, misal berdasarkan class atau role
+                    try:
+                        bank_transfer_option = page.locator("[data-testid*='bank-transfer'], .bank-transfer, [aria-label*='transfer']").first
+                        await bank_transfer_option.wait_for(state="visible", timeout=5000)
+                        print("✅ Opsi transfer bank ditemukan dengan selector alternatif")
+                    except:
+                        raise Exception("Opsi transfer bank tidak ditemukan")
                 await bank_transfer_option.click()
                 await page.wait_for_timeout(2000)
 
                 # Pilih Bank BCA
                 bca_option = None
-                for text in ["bca", "BCA"]:
+                for text in ["bca", "BCA", "Bank Central Asia"]:
                     try:
                         bca_option = page.locator(f"text=/{text}/i").first
                         await bca_option.wait_for(state="visible", timeout=5000)
@@ -101,7 +111,13 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
                     except:
                         continue
                 if bca_option is None:
-                    raise Exception("Bank BCA tidak ditemukan")
+                    # Coba dengan selector lain
+                    try:
+                        bca_option = page.locator("[data-testid*='bca'], .bca-bank, img[alt*='bca']").first
+                        await bca_option.wait_for(state="visible", timeout=5000)
+                        print("✅ Bank BCA ditemukan dengan selector alternatif")
+                    except:
+                        raise Exception("Bank BCA tidak ditemukan")
                 await bca_option.click()
                 await page.wait_for_timeout(2000)
 
