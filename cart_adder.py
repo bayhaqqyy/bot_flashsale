@@ -31,9 +31,12 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
 
         # Kalau muncul popup quantity, isi
         qty_selector = page.locator("input[type='number'], [aria-label*='jumlah'], [placeholder*='jumlah']")
-        if await qty_selector.is_visible(timeout=5000):
+        try:
+            await qty_selector.wait_for(state="visible", timeout=5000)
             await qty_selector.fill(str(quantity))
             await page.wait_for_timeout(1000)
+        except Exception:
+            pass
 
         # Tunggu konfirmasi (toast / notifikasi) Shopee
         success = False
