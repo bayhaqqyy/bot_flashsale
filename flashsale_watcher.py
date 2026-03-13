@@ -1,3 +1,7 @@
+from logging import config
+import re
+from browser import get_logged_in_browser
+from cart_adder import add_to_cart
 import argparse
 import html
 import json
@@ -154,10 +158,27 @@ def next_sleep(item: WatchItem, interval_seconds: int, warmup_minutes: int, now:
     return float(interval_seconds)
 
 
-def alert(item: WatchItem, reasons: Iterable[str]) -> None:
+def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
     reasons_text = ", ".join(reasons)
-    print(f"[ALERT] {item.name}: target terdeteksi aktif ({reasons_text})")
-    print(f"[ALERT] URL monitor: {item.url}")
+    print(f"[ALERT] {item.name}: ACTIVE ({reasons_text})")
+    
+    # Cek harga masuk range
+    if "price_range" in config and prices:
+        try:
+            price_int = int(re.sub(r"[^\d]", "", prices[0]))
+            min_p = config["price_range"]["min"]
+            max_p = config["price_range"]["max"]
+            if min_p <= price_int <= max_p and config.get("auto_add_to_cart", False):
+                print(f"💰 Harga Rp{price_int} masuk range → Add to Cart!")
+                browser, context, page = get_logged_in_browser(headless=True)
+                add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
+                context.close()
+                browser.close()
+                return
+        except:
+            pass
+    
+    print(f"[ALERT] URL: {item.url}")
     print("\a", end="")
 
 
@@ -277,7 +298,7 @@ def run(
                     if result.is_active:
                         suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
                         print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
-                        alert(item, result.reasons)
+                        alert(item, result.reasons, result.prices, payload)
                         pending.pop(item.name, None)
                         continue
                     if item.page_type == "product" and result.prices:
