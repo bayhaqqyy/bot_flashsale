@@ -2,6 +2,7 @@ from logging import config
 import re
 from browser import get_logged_in_browser, fetch_page_html
 from cart_adder import add_to_cart
+from telegram_notifier import send_telegram_alert
 import argparse
 import html
 import json
@@ -161,7 +162,19 @@ def next_sleep(item: WatchItem, interval_seconds: int, warmup_minutes: int, now:
 
 async def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
     reasons_text = ", ".join(reasons)
+    prices_text = ", ".join(prices) if prices else "tidak terdeteksi"
     print(f"[ALERT] {item.name}: ACTIVE ({reasons_text})")
+    
+    # Kirim notifikasi ke Telegram
+    message = f"""
+🚨 FLASH SALE TERDETEKSI!
+Produk: <b>{item.name}</b>
+Alasan: {reasons_text}
+Harga: {prices_text}
+Link: {item.url}
+⏰ Waktu: {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S %z')}
+    """.strip()
+    send_telegram_alert(config, message)
     
     # Cek harga masuk range
     if "price_range" in config and prices:
@@ -257,79 +270,85 @@ async def run(
     debug_text: bool = False,
 ) -> int:
     pending = {item.name: item for item in items}
-    renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed)
+    # Create shared browser context for all fetches
+    pw, browser, context, _ = await get_logged_in_browser(headless=not headed)
+    try:
+        renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed, context=context)
 
-    async with renderer:
-        while pending:
-            for item in list(pending.values()):
-                now = normalized_now()
+        async with renderer:
+            while pending:
+                    for item in list(pending.values()):
+                        now = normalized_now()
 
-                if not should_enter_warmup(item, warmup_minutes, now):
-                    sleep_seconds = next_sleep(item, interval_seconds, warmup_minutes, now)
-                    wake_at = now + timedelta(seconds=sleep_seconds)
-                    print(
-                        f"[WAIT] {item.name}: monitoring aktif mulai sekitar "
-                        f"{wake_at.strftime('%Y-%m-%d %H:%M:%S %z')}"
-                    )
-                    await asyncio.sleep(min(sleep_seconds, 60))
-                    continue
+                        if not should_enter_warmup(item, warmup_minutes, now):
+                            sleep_seconds = next_sleep(item, interval_seconds, warmup_minutes, now)
+                            wake_at = now + timedelta(seconds=sleep_seconds)
+                            print(
+                                f"[WAIT] {item.name}: monitoring aktif mulai sekitar "
+                                f"{wake_at.strftime('%Y-%m-%d %H:%M:%S %z')}"
+                            )
+                            await asyncio.sleep(min(sleep_seconds, 60))
+                            continue
 
-                timestamp = now.strftime("%Y-%m-%d %H:%M:%S %z")
-                try:
-                    raw_texts: list[str] = []
-                    if item.page_type == "product":
+                        timestamp = now.strftime("%Y-%m-%d %H:%M:%S %z")
                         try:
-                            source_html = await fetch_page_html(item.url, timeout_seconds, headless=not headed)
-                            raw_texts.append(html_to_text(source_html))
-                        except Exception as e:
-                            print(f"Error fetching {item.url}: {e}")
-                            pass
-
-                    raw_texts.append(await renderer.fetch_text(item.url))
-                    page_text = "\n".join(part for part in raw_texts if part.strip())
-                    if debug_text:
-                        preview = " ".join(page_text.split())[:500]
-                        print(f"[DEBUG] {item.name}: {preview}")
-                    result = detect_flash_sale(
-                        DetectionInput(
-                            page_text=page_text,
-                            page_type=item.page_type,
-                            active_keywords=item.active_keywords,
-                            product_terms=item.product_terms,
-                            item_name=item.name,
-                        )
-                    )
-                    if result.is_active:
-                        suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
-                        print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
-                        await alert(item, result.reasons, result.prices, config)
-                        pending.pop(item.name, None)
-                        continue
-                    if item.page_type == "product" and result.prices:
-                        print(
-                            f"[{timestamp}] {item.name}: harga terdeteksi "
-                            f"({', '.join(result.prices[:3])}) | status: {result.availability}"
-                        )
-                    if result.state == "auth_wall":
-                        suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
-                        print(
-                            f"[{timestamp}] {item.name}: perlu akses halaman publik "
-                            f"({', '.join(result.reasons)}){suffix}"
-                        )
-                        pending.pop(item.name, None)
-                        continue
-                    suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
-                    print(
-                        f"[{timestamp}] {item.name}: belum aktif "
-                        f"({', '.join(result.reasons)}) | status: {result.availability}{suffix}"
-                    )
+                            raw_texts: list[str] = []
+                            if item.page_type == "product":
+                                try:
+                                    source_html = await fetch_page_html(item.url, context, timeout_seconds)
+                                    raw_texts.append(html_to_text(source_html))
+                                except Exception as e:
+                                    print(f"Error fetching {item.url}: {e}")
+                                    pass
+                                    raw_texts.append(await renderer.fetch_text(item.url))
+                                    page_text = "\n".join(part for part in raw_texts if part.strip())
+                                    if debug_text:
+                                        preview = " ".join(page_text.split())[:500]
+                                        print(f"[DEBUG] {item.name}: {preview}")
+                                    result = detect_flash_sale(
+                                        DetectionInput(
+                                            page_text=page_text,
+                                            page_type=item.page_type,
+                                            active_keywords=item.active_keywords,
+                                    product_terms=item.product_terms,
+                                    item_name=item.name,
+                                )
+                            )
+                            if result.is_active:
+                                suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                                print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
+                                await alert(item, result.reasons, result.prices, config)
+                                pending.pop(item.name, None)
+                                continue
+                            if item.page_type == "product" and result.prices:
+                                print(
+                                    f"[{timestamp}] {item.name}: harga terdeteksi "
+                                    f"({', '.join(result.prices[:3])}) | status: {result.availability}"
+                                )
+                            if result.state == "auth_wall":
+                                suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                                print(
+                                    f"[{timestamp}] {item.name}: perlu akses halaman publik "
+                                    f"({', '.join(result.reasons)}){suffix}"
+                                )
+                                pending.pop(item.name, None)
+                                continue
+                            suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
+                            print(
+                                f"[{timestamp}] {item.name}: belum aktif "
+                                f"({', '.join(result.reasons)}) | status: {result.availability}{suffix}"
+                            )
                 except Exception as exc:  # pragma: no cover
                     print(f"[{timestamp}] {item.name}: error ({exc})")
 
                 jitter = random.uniform(0, 1.5)
                 await asyncio.sleep(interval_seconds + jitter)
 
-    return 0
+        return 0
+    finally:
+        await context.close()
+        await browser.close()
+        await pw.stop()
 
 
 def main() -> int:

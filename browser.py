@@ -128,15 +128,13 @@ async def get_logged_in_browser(headless=True):
     return pw, browser, context, page
 
 
-async def fetch_page_html(url: str, timeout_seconds: int = 15, headless: bool = True) -> str:
-    """Fetch HTML dari URL menggunakan browser yang sudah login."""
-    pw, browser, context, page = await get_logged_in_browser(headless=headless)
+async def fetch_page_html(url: str, context, timeout_seconds: int = 15) -> str:
+    """Fetch HTML dari URL menggunakan context yang sudah login."""
+    page = await context.new_page()
     try:
         await page.goto(url, timeout=timeout_seconds * 1000)
         await page.wait_for_load_state("networkidle", timeout=timeout_seconds * 1000)
         html_content = await page.content()
         return html_content
     finally:
-        await context.close()
-        await browser.close()
-        await pw.stop()
+        await page.close()
