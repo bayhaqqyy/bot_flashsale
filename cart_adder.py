@@ -34,24 +34,45 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
         if await qty_selector.is_visible(timeout=5000):
             await qty_selector.fill(str(quantity))
             await page.wait_for_timeout(1000)
-        
+
+        # Tunggu konfirmasi (toast / notifikasi) Shopee
+        success = False
+        try:
+            # Cari teks yang menunjukkan berhasil ditambahkan ke keranjang
+            success_locator = page.locator("text=/berhasil.*(keranjang|ditambahkan)/i")
+            await success_locator.wait_for(state="visible", timeout=8000)
+            success = True
+        except Exception:
+            # Mungkin tidak muncul toast, lanjut cek lain atau anggap "mungkin"
+            pass
+
         # Screenshot untuk bukti (kirim ke Telegram)
         screenshot_path = f"/tmp/cart_{int(time.time())}.png"  # /tmp aman di server
         await page.screenshot(path=screenshot_path, full_page=False)
-        
+
         price_text = "harga sesuai range"
         color_text = f" (warna: {selected_color})" if selected_color else ""
-        message = f"""
+        if success:
+            message = f"""
 🛒 FLASH SALE BERHASIL (Add to Cart){color_text}
 Produk: <b>{item_name}</b>
 Harga: {price_text}
 Quantity: {quantity}
 Link: {url}
 ✅ Sudah ditambahkan ke keranjang!
-        """.strip()
-        
+            """.strip()
+        else:
+            message = f"""
+🛒 FLASH SALE TERDETEKSI (tapi belum pasti masuk ke keranjang){color_text}
+Produk: <b>{item_name}</b>
+Harga: {price_text}
+Quantity: {quantity}
+Link: {url}
+⚠️ Tidak ditemukan notifikasi "berhasil". Cek manual di keranjang.
+            """.strip()
+
         send_telegram_alert(config, message, screenshot_path)
-        print(f"✅ {item_name} → Add to Cart sukses + notif dikirim!")
+        print(f"✅ {item_name} → Add to Cart selesai (success={success}) + notif dikirim!")
         
     except Exception as e:
         print(f"❌ Gagal add to cart {item_name}: {str(e)}")
