@@ -8,6 +8,7 @@ import json
 import random
 import re
 import time
+import asyncio
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -158,7 +159,7 @@ def next_sleep(item: WatchItem, interval_seconds: int, warmup_minutes: int, now:
     return float(interval_seconds)
 
 
-def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
+async def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
     reasons_text = ", ".join(reasons)
     print(f"[ALERT] {item.name}: ACTIVE ({reasons_text})")
     
@@ -170,11 +171,11 @@ def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
             max_p = config["price_range"]["max"]
             if min_p <= price_int <= max_p and config.get("auto_add_to_cart", False):
                 print(f"💰 Harga Rp{price_int} masuk range → Add to Cart!")
-                pw, browser, context, page = get_logged_in_browser(headless=True)
-                add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
-                context.close()
-                browser.close()
-                pw.stop()
+                pw, browser, context, page = await get_logged_in_browser(headless=True)
+                await add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
+                await context.close()
+                await browser.close()
+                await pw.stop()
                 return
         except:
             pass
@@ -246,7 +247,7 @@ def analyze_local_file(
     return 1
 
 
-def run(
+async def run(
     interval_seconds: int,
     timeout_seconds: int,
     warmup_minutes: int,
@@ -258,7 +259,7 @@ def run(
     pending = {item.name: item for item in items}
     renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed)
 
-    with renderer:
+    async with renderer:
         while pending:
             for item in list(pending.values()):
                 now = normalized_now()
@@ -270,7 +271,7 @@ def run(
                         f"[WAIT] {item.name}: monitoring aktif mulai sekitar "
                         f"{wake_at.strftime('%Y-%m-%d %H:%M:%S %z')}"
                     )
-                    time.sleep(min(sleep_seconds, 60))
+                    await asyncio.sleep(min(sleep_seconds, 60))
                     continue
 
                 timestamp = now.strftime("%Y-%m-%d %H:%M:%S %z")
@@ -278,13 +279,13 @@ def run(
                     raw_texts: list[str] = []
                     if item.page_type == "product":
                         try:
-                            source_html = fetch_page_html(item.url, timeout_seconds, headless=not headed)
+                            source_html = await fetch_page_html(item.url, timeout_seconds, headless=not headed)
                             raw_texts.append(html_to_text(source_html))
                         except Exception as e:
                             print(f"Error fetching {item.url}: {e}")
                             pass
 
-                    raw_texts.append(renderer.fetch_text(item.url))
+                    raw_texts.append(await renderer.fetch_text(item.url))
                     page_text = "\n".join(part for part in raw_texts if part.strip())
                     if debug_text:
                         preview = " ".join(page_text.split())[:500]
@@ -301,7 +302,7 @@ def run(
                     if result.is_active:
                         suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
                         print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
-                        alert(item, result.reasons, result.prices, config)
+                        await alert(item, result.reasons, result.prices, config)
                         pending.pop(item.name, None)
                         continue
                     if item.page_type == "product" and result.prices:
@@ -326,7 +327,7 @@ def run(
                     print(f"[{timestamp}] {item.name}: error ({exc})")
 
                 jitter = random.uniform(0, 1.5)
-                time.sleep(interval_seconds + jitter)
+                await asyncio.sleep(interval_seconds + jitter)
 
     return 0
 
@@ -351,15 +352,15 @@ def main() -> int:
     if args.timeout is not None:
         timeout_seconds = args.timeout
     print(f"Memantau {len(items)} item. Tekan Ctrl+C untuk berhenti.")
-    return run(
+    return asyncio.run(run(
         interval_seconds,
         timeout_seconds,
         warmup_minutes,
         items,
-        args.headed,
-        args.debug_text,
         config_full,
-    )
+        headed=args.headed,
+        debug_text=args.debug_text,
+    ))
 
 
 if __name__ == "__main__":
