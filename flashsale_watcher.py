@@ -250,9 +250,9 @@ def run(
     timeout_seconds: int,
     warmup_minutes: int,
     items: list[WatchItem],
+    config: dict,              
     headed: bool = False,
     debug_text: bool = False,
-    config: dict,   
 ) -> int:
     pending = {item.name: item for item in items}
     renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed)
