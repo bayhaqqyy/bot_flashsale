@@ -299,17 +299,16 @@ async def run(
                                     raw_texts.append(html_to_text(source_html))
                                 except Exception as e:
                                     print(f"Error fetching {item.url}: {e}")
-                                    pass
-                                    raw_texts.append(await renderer.fetch_text(item.url))
-                                    page_text = "\n".join(part for part in raw_texts if part.strip())
-                                    if debug_text:
-                                        preview = " ".join(page_text.split())[:500]
-                                        print(f"[DEBUG] {item.name}: {preview}")
-                                    result = detect_flash_sale(
-                                        DetectionInput(
-                                            page_text=page_text,
-                                            page_type=item.page_type,
-                                            active_keywords=item.active_keywords,
+                            raw_texts.append(await renderer.fetch_text(item.url))
+                            page_text = "\n".join(part for part in raw_texts if part.strip())
+                            if debug_text:
+                                preview = " ".join(page_text.split())[:500]
+                                print(f"[DEBUG] {item.name}: {preview}")
+                            result = detect_flash_sale(
+                                DetectionInput(
+                                    page_text=page_text,
+                                    page_type=item.page_type,
+                                    active_keywords=item.active_keywords,
                                     product_terms=item.product_terms,
                                     item_name=item.name,
                                 )
