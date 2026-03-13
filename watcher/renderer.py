@@ -7,16 +7,16 @@ class BrowserRenderer:
         self._page = None
         self._context = None
 
-    async def __enter__(self) -> "BrowserRenderer":
+    async def __aenter__(self) -> "BrowserRenderer":
         from browser import get_logged_in_browser
 
         self._pw, self._browser, self._context, self._page = await get_logged_in_browser(headless=self.headless)
         self._page.set_default_timeout(self.timeout_ms)
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type, exc, tb) -> None:
         for closer in (self._safe_close_context, self._safe_close_browser, self._safe_stop_pw):
-            closer()
+            await closer()
 
     async def fetch_text(self, url: str) -> str:
         if self._page is None:
@@ -53,32 +53,32 @@ class BrowserRenderer:
         await self._page.evaluate("window.scrollTo(0, 0)")
         await self._page.wait_for_timeout(500)
 
-    def _safe_close_context(self) -> None:
+    async def _safe_close_context(self) -> None:
         if self._context is None:
             return
         try:
-            self._context.close()
+            await self._context.close()
         except Exception:
             pass
         finally:
             self._context = None
             self._page = None
 
-    def _safe_close_browser(self) -> None:
+    async def _safe_close_browser(self) -> None:
         if self._browser is None:
             return
         try:
-            self._browser.close()
+            await self._browser.close()
         except Exception:
             pass
         finally:
             self._browser = None
 
-    def _safe_stop_pw(self) -> None:
+    async def _safe_stop_pw(self) -> None:
         if self._pw is None:
             return
         try:
-            self._pw.stop()
+            await self._pw.stop()
         except Exception:
             pass
         finally:
