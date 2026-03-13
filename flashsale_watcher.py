@@ -299,7 +299,7 @@ def run(
                     if result.is_active:
                         suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
                         print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
-                        alert(item, result.reasons, result.prices, payload)
+                        alert(item, result.reasons, result.prices, config)
                         pending.pop(item.name, None)
                         continue
                     if item.page_type == "product" and result.prices:
