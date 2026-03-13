@@ -106,7 +106,7 @@ def load_config(path: str) -> tuple[int, int, int, list[WatchItem]]:
     items = [parse_item(item) for item in payload.get("items", [])]
     if not items:
         raise ValueError("Config tidak memiliki item untuk dipantau.")
-    return interval, timeout, warmup, items
+    return interval, timeout, warmup, items, payload
 
 
 def parse_item(payload: dict) -> WatchItem:
@@ -250,8 +250,9 @@ def run(
     timeout_seconds: int,
     warmup_minutes: int,
     items: list[WatchItem],
-    headed: bool,
-    debug_text: bool,
+    headed: bool = False,
+    debug_text: bool = False,
+    config: dict,   
 ) -> int:
     pending = {item.name: item for item in items}
     renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed)
@@ -342,7 +343,7 @@ def main() -> int:
         )
 
     config_path = Path(args.config)
-    interval_seconds, timeout_seconds, warmup_minutes, items = load_config(str(config_path))
+    interval_seconds, timeout_seconds, warmup_minutes, items, config_full = load_config(str(config_path))
     if args.interval is not None:
         interval_seconds = args.interval
     if args.timeout is not None:
@@ -355,6 +356,7 @@ def main() -> int:
         items,
         args.headed,
         args.debug_text,
+        config_full,
     )
 
 
