@@ -49,6 +49,58 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
             # Mungkin tidak muncul toast, lanjut cek lain atau anggap "mungkin"
             pass
 
+        if success and config.get("auto_checkout", False):
+            # Langsung checkout dengan ShopeePay
+            try:
+                print(f"🛒 {item_name} → Checkout dengan Transfer Bank BCA...")
+                await page.goto("https://shopee.co.id/cart", wait_until="networkidle", timeout=30000)
+                await page.wait_for_timeout(3000)
+
+                # Klik tombol checkout (biasanya ada tombol "Checkout" atau "Bayar")
+                checkout_btn = page.get_by_role("button").filter(has_text=re.compile(r"checkout|bayar|beli", re.I))
+                await checkout_btn.wait_for(state="visible", timeout=10000)
+                await checkout_btn.click()
+                await page.wait_for_timeout(3000)
+
+                # Pilih metode pembayaran Transfer Bank
+                bank_transfer_option = page.locator("text=/transfer bank|bank transfer/i").first
+                await bank_transfer_option.wait_for(state="visible", timeout=10000)
+                await bank_transfer_option.click()
+                await page.wait_for_timeout(2000)
+
+                # Pilih Bank BCA
+                bca_option = page.locator("text=/bca|BCA/i").first
+                await bca_option.wait_for(state="visible", timeout=10000)
+                await bca_option.click()
+                await page.wait_for_timeout(2000)
+
+                # Klik tombol konfirmasi pembayaran
+                confirm_btn = page.get_by_role("button").filter(has_text=re.compile(r"bayar|konfirmasi|pay now", re.I))
+                await confirm_btn.wait_for(state="visible", timeout=10000)
+                await confirm_btn.click()
+                await page.wait_for_timeout(5000)
+
+                # Screenshot setelah checkout
+                screenshot_path = f"/tmp/checkout_{int(time.time())}.png"
+                await page.screenshot(path=screenshot_path, full_page=False)
+
+                message = f"""
+💳 FLASH SALE CHECKOUT BERHASIL (Transfer Bank BCA){color_text}
+Produk: <b>{item_name}</b>
+Harga: {price_text}
+Quantity: {quantity}
+Link: {url}
+✅ Sudah checkout dengan Transfer Bank BCA! Cek rekening BCA untuk detail pembayaran.
+                """.strip()
+                send_telegram_alert(config, message, screenshot_path)
+                print(f"✅ {item_name} → Checkout selesai!")
+                return
+
+            except Exception as e:
+                print(f"❌ Gagal checkout {item_name}: {str(e)}")
+                # Jika gagal checkout, tetap kirim notif add to cart
+                pass
+
         # Screenshot untuk bukti (kirim ke Telegram)
         screenshot_path = f"/tmp/cart_{int(time.time())}.png"  # /tmp aman di server
         await page.screenshot(path=screenshot_path, full_page=False)
