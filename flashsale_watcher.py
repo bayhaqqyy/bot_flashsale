@@ -283,7 +283,7 @@ def run(
                     if item.page_type == "product" and result.prices:
                         print(
                             f"[{timestamp}] {item.name}: harga terdeteksi "
-                            f"({', '.join(result.prices[:3])})"
+                            f"({', '.join(result.prices[:3])}) | status: {result.availability}"
                         )
                     if result.state == "auth_wall":
                         suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
@@ -294,7 +294,10 @@ def run(
                         pending.pop(item.name, None)
                         continue
                     suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
-                    print(f"[{timestamp}] {item.name}: belum aktif ({', '.join(result.reasons)}){suffix}")
+                    print(
+                        f"[{timestamp}] {item.name}: belum aktif "
+                        f"({', '.join(result.reasons)}) | status: {result.availability}{suffix}"
+                    )
                 except Exception as exc:  # pragma: no cover
                     print(f"[{timestamp}] {item.name}: error ({exc})")
 

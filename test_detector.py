@@ -40,6 +40,29 @@ class DetectorTests(unittest.TestCase):
             )
         )
         self.assertTrue(result.is_active)
+        self.assertEqual(result.availability, "available")
+
+    def test_product_page_without_keywords_can_use_price_and_buy_signal(self) -> None:
+        text = "Dompet pria original. Rp12.000. Beli sekarang."
+        result = detect_flash_sale(
+            DetectionInput(
+                page_text=text,
+                page_type="product",
+            )
+        )
+        self.assertTrue(result.is_active)
+        self.assertEqual(result.prices, ["Rp12.000"])
+
+    def test_product_page_marks_unavailable(self) -> None:
+        text = "Dompet pria. Stok habis. Rp12.000."
+        result = detect_flash_sale(
+            DetectionInput(
+                page_text=text,
+                page_type="product",
+            )
+        )
+        self.assertFalse(result.is_active)
+        self.assertEqual(result.availability, "unavailable")
 
     def test_html_to_text_extracts_content(self) -> None:
         raw_html = "<html><body><div>Flash Sale sedang berjalan</div><p>Dompet pria</p></body></html>"

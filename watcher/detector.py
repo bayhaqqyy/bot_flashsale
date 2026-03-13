@@ -17,6 +17,7 @@ class DetectionResult:
     reasons: list[str]
     state: str = "inactive"
     prices: list[str] = field(default_factory=list)
+    availability: str = "unknown"
 
 
 def normalize_text(text: str) -> str:
@@ -34,6 +35,7 @@ def extract_prices(text: str) -> list[str]:
     for pattern in patterns:
         for match in re.findall(pattern, text, flags=re.I):
             normalized = re.sub(r"\s+", " ", match).strip()
+            normalized = re.sub(r"^rp", "Rp", normalized, flags=re.I)
             key = normalized.lower()
             if key not in seen:
                 seen.add(key)
@@ -44,6 +46,7 @@ def extract_prices(text: str) -> list[str]:
 def detect_flash_sale(data: DetectionInput) -> DetectionResult:
     text = normalize_text(data.page_text)
     reasons: list[str] = []
+    prices = extract_prices(text)
 
     login_markers = [
         "log in",
@@ -56,7 +59,8 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
             False,
             ["halaman yang terbaca adalah login/interstitial, bukan konten flash sale"],
             state="auth_wall",
-            prices=extract_prices(text),
+            prices=prices,
+            availability="unknown",
         )
 
     active_keywords = [keyword.lower() for keyword in data.active_keywords if keyword.strip()]
@@ -82,16 +86,69 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
             is_active,
             reasons,
             state="active" if is_active else "inactive",
-            prices=extract_prices(text),
+            prices=prices,
+            availability="available" if is_active else "unknown",
         )
 
+    unavailable_markers = [
+        "stok habis",
+        "sold out",
+        "produk tidak ditemukan",
+        "produk telah dihapus",
+        "barang tidak tersedia",
+        "item tidak tersedia",
+        "out of stock",
+    ]
+    matched_unavailable = [marker for marker in unavailable_markers if marker in text]
+    if matched_unavailable:
+        return DetectionResult(
+            False,
+            [f"produk tidak tersedia: {', '.join(matched_unavailable)}"],
+            state="inactive",
+            prices=prices,
+            availability="unavailable",
+        )
+
+    buy_markers = [
+        "beli sekarang",
+        "masukkan keranjang",
+        "checkout",
+    ]
+    matched_buy = [marker for marker in buy_markers if marker in text]
+
     missing_keywords = [keyword for keyword in active_keywords if keyword not in text]
-    if not missing_keywords:
+    if active_keywords and not missing_keywords:
         return DetectionResult(
             True,
             [f"keyword:{keyword}" for keyword in active_keywords],
             state="active",
-            prices=extract_prices(text),
+            prices=prices,
+            availability="available",
+        )
+
+    if not active_keywords:
+        if prices and matched_buy:
+            return DetectionResult(
+                True,
+                [f"harga terdeteksi", f"sinyal beli: {', '.join(matched_buy)}"],
+                state="active",
+                prices=prices,
+                availability="available",
+            )
+        if prices:
+            return DetectionResult(
+                False,
+                ["harga terdeteksi, tapi sinyal beli tidak jelas"],
+                state="inactive",
+                prices=prices,
+                availability="unknown",
+            )
+        return DetectionResult(
+            False,
+            ["harga belum terdeteksi"],
+            state="inactive",
+            prices=prices,
+            availability="unknown",
         )
 
     generic_markers = [
@@ -103,4 +160,10 @@ def detect_flash_sale(data: DetectionInput) -> DetectionResult:
     matched = [label for needle, label in generic_markers if needle in text]
     reasons.append(f"keyword belum lengkap: {', '.join(missing_keywords)}")
     reasons.extend(matched or ["marker live belum terlihat"])
-    return DetectionResult(False, reasons, state="inactive", prices=extract_prices(text))
+    return DetectionResult(
+        False,
+        reasons,
+        state="inactive",
+        prices=prices,
+        availability="available" if prices else "unknown",
+    )
