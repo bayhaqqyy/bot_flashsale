@@ -126,3 +126,17 @@ def get_logged_in_browser(headless=True):
     
     # Return dengan pw supaya bisa close nanti
     return pw, browser, context, page
+
+
+def fetch_page_html(url: str, timeout_seconds: int = 15, headless: bool = True) -> str:
+    """Fetch HTML dari URL menggunakan browser yang sudah login."""
+    pw, browser, context, page = get_logged_in_browser(headless=headless)
+    try:
+        page.goto(url, timeout=timeout_seconds * 1000)
+        page.wait_for_load_state("networkidle", timeout=timeout_seconds * 1000)
+        html_content = page.content()
+        return html_content
+    finally:
+        context.close()
+        browser.close()
+        pw.stop()

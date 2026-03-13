@@ -2,36 +2,20 @@ class BrowserRenderer:
     def __init__(self, timeout_seconds: int, headless: bool = True) -> None:
         self.timeout_ms = timeout_seconds * 1000
         self.headless = headless
-        self._playwright = None
+        self._pw = None
         self._browser = None
         self._page = None
         self._context = None
 
     def __enter__(self) -> "BrowserRenderer":
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError(
-                "Playwright belum terpasang. Install dulu dengan "
-                "'pip install -r requirements.txt' lalu 'python -m playwright install chromium'."
-            ) from exc
+        from browser import get_logged_in_browser
 
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=self.headless)
-        self._context = self._browser.new_context(
-            locale="id-ID",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0.0.0 Safari/537.36"
-            ),
-        )
-        self._page = self._context.new_page()
+        self._pw, self._browser, self._context, self._page = get_logged_in_browser(headless=self.headless)
         self._page.set_default_timeout(self.timeout_ms)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        for closer in (self._safe_close_context, self._safe_close_browser, self._safe_stop_playwright):
+        for closer in (self._safe_close_context, self._safe_close_browser, self._safe_stop_pw):
             closer()
 
     def fetch_text(self, url: str) -> str:
@@ -90,12 +74,12 @@ class BrowserRenderer:
         finally:
             self._browser = None
 
-    def _safe_stop_playwright(self) -> None:
-        if self._playwright is None:
+    def _safe_stop_pw(self) -> None:
+        if self._pw is None:
             return
         try:
-            self._playwright.stop()
+            self._pw.stop()
         except Exception:
             pass
         finally:
-            self._playwright = None
+            self._pw = None

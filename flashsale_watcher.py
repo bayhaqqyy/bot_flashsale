@@ -1,6 +1,6 @@
 from logging import config
 import re
-from browser import get_logged_in_browser
+from browser import get_logged_in_browser, fetch_page_html
 from cart_adder import add_to_cart
 import argparse
 import html
@@ -170,10 +170,11 @@ def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
             max_p = config["price_range"]["max"]
             if min_p <= price_int <= max_p and config.get("auto_add_to_cart", False):
                 print(f"💰 Harga Rp{price_int} masuk range → Add to Cart!")
-                browser, context, page = get_logged_in_browser(headless=True)
+                pw, browser, context, page = get_logged_in_browser(headless=True)
                 add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
                 context.close()
                 browser.close()
+                pw.stop()
                 return
         except:
             pass
@@ -277,9 +278,10 @@ def run(
                     raw_texts: list[str] = []
                     if item.page_type == "product":
                         try:
-                            source_html = fetch_source_html(item.url, timeout_seconds)
+                            source_html = fetch_page_html(item.url, timeout_seconds, headless=not headed)
                             raw_texts.append(html_to_text(source_html))
-                        except (urllib.error.URLError, TimeoutError):
+                        except Exception as e:
+                            print(f"Error fetching {item.url}: {e}")
                             pass
 
                     raw_texts.append(renderer.fetch_text(item.url))
