@@ -269,11 +269,17 @@ async def run(
     headed: bool = False,
     debug_text: bool = False,
 ) -> int:
+    # Fast mode: kurangi interval dan timeout untuk lebih cepet
+    if config.get("fast_mode", False):
+        interval_seconds = min(interval_seconds, 1)  # Max 1s
+        timeout_seconds = min(timeout_seconds, 5)    # Max 5s
+        print("🚀 Fast mode aktif: interval 1s, timeout 5s")
+
     pending = {item.name: item for item in items}
     # Create shared browser context for all fetches
     pw, browser, context, _ = await get_logged_in_browser(headless=not headed)
     try:
-        renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed, context=context)
+        renderer = BrowserRenderer(timeout_seconds=timeout_seconds, headless=not headed, context=context, fast_mode=config.get("fast_mode", False))
 
         async with renderer:
             while pending:

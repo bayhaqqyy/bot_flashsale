@@ -2,13 +2,14 @@ import random
 
 
 class BrowserRenderer:
-    def __init__(self, timeout_seconds: int, headless: bool = True, context=None) -> None:
+    def __init__(self, timeout_seconds: int, headless: bool = True, context=None, fast_mode: bool = False) -> None:
         self.timeout_ms = timeout_seconds * 1000
         self.headless = headless
         self._pw = None
         self._browser = None
         self._page = None
         self._context = context
+        self.fast_mode = fast_mode
 
     async def __aenter__(self) -> "BrowserRenderer":
         if self._context is None:
@@ -41,11 +42,12 @@ class BrowserRenderer:
         except Exception:
             pass
 
-        # Tambahkan delay acak agar tidak terlihat bot
-        await self._page.wait_for_timeout(int(random.uniform(800, 2000)))
+        # Tambahkan delay acak agar tidak terlihat bot (skip di fast mode)
+        if not self.fast_mode:
+            await self._page.wait_for_timeout(int(random.uniform(800, 2000)))
 
-        # Scroll dan gerakan mouse mirip manusia
-        await self._humanize_interaction()
+            # Scroll dan gerakan mouse mirip manusia
+            await self._humanize_interaction()
 
         body = self._page.locator("body")
         return await body.inner_text()

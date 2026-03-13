@@ -52,97 +52,38 @@ async def add_to_cart(page, url: str, quantity: int, config: dict, item_name: st
             success = True  # Anggap berhasil jika add to cart tidak error
 
         if success and config.get("auto_checkout", False):
-            # Langsung checkout dengan Transfer Bank BCA
+            # Langsung checkout dengan Transfer Bank BCA - mode cepat
             try:
-                print(f"🛒 {item_name} → Checkout dengan Transfer Bank BCA...")
-                await page.goto("https://shopee.co.id/cart", wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(3000)
-                print(f"✅ Halaman keranjang loaded untuk {item_name}")
+                print(f"🛒 {item_name} → Checkout cepat dengan Transfer Bank BCA...")
+                await page.goto("https://shopee.co.id/cart", wait_until="domcontentloaded", timeout=15000)  # Lebih cepat
+                await page.wait_for_timeout(1000)  # Kurangi wait
 
-                # Klik tombol checkout (coba beberapa variasi)
-                checkout_btn = None
-                for text in ["checkout sekarang", "bayar sekarang", "checkout", "bayar", "beli"]:
-                    try:
-                        checkout_btn = page.get_by_role("button").filter(has_text=re.compile(text, re.I)).first
-                        await checkout_btn.wait_for(state="visible", timeout=5000)
-                        print(f"✅ Tombol checkout ditemukan: {text}")
-                        break
-                    except:
-                        continue
-                if checkout_btn is None:
-                    raise Exception("Tombol checkout tidak ditemukan")
+                # Klik tombol checkout langsung
+                checkout_btn = page.get_by_role("button").filter(has_text=re.compile(r"checkout|bayar", re.I)).first
                 await checkout_btn.click()
-                await page.wait_for_timeout(3000)
-                await page.wait_for_load_state("networkidle", timeout=10000)  # Tunggu halaman load
-                # Scroll ke bagian pembayaran jika perlu
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                await page.wait_for_timeout(1000)
-                print(f"✅ Tombol checkout diklik untuk {item_name}")
+                await page.wait_for_timeout(1000)  # Kurangi
 
-                # Pilih metode pembayaran Transfer Bank
-                bank_transfer_option = None
-                for text in ["transfer bank", "bank transfer", "transfer", "bank"]:
-                    try:
-                        bank_transfer_option = page.locator(f"text=/{text}/i").first
-                        await bank_transfer_option.wait_for(state="visible", timeout=10000)
-                        print(f"✅ Opsi transfer bank ditemukan: {text}")
-                        break
-                    except:
-                        continue
-                if bank_transfer_option is None:
-                    # Coba dengan selector lain, misal berdasarkan class atau role
-                    try:
-                        bank_transfer_option = page.locator("[data-testid*='bank-transfer'], .bank-transfer, [aria-label*='transfer']").first
-                        await bank_transfer_option.wait_for(state="visible", timeout=5000)
-                        print("✅ Opsi transfer bank ditemukan dengan selector alternatif")
-                    except:
-                        raise Exception("Opsi transfer bank tidak ditemukan")
+                # Pilih metode pembayaran Transfer Bank langsung
+                bank_transfer_option = page.locator("text=/transfer bank|bank transfer/i").first
                 await bank_transfer_option.click()
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(500)  # Kurangi
 
-                # Pilih Bank BCA
-                bca_option = None
-                for text in ["bca", "BCA", "Bank Central Asia"]:
-                    try:
-                        bca_option = page.locator(f"text=/{text}/i").first
-                        await bca_option.wait_for(state="visible", timeout=5000)
-                        print(f"✅ Bank BCA ditemukan: {text}")
-                        break
-                    except:
-                        continue
-                if bca_option is None:
-                    # Coba dengan selector lain
-                    try:
-                        bca_option = page.locator("[data-testid*='bca'], .bca-bank, img[alt*='bca']").first
-                        await bca_option.wait_for(state="visible", timeout=5000)
-                        print("✅ Bank BCA ditemukan dengan selector alternatif")
-                    except:
-                        raise Exception("Bank BCA tidak ditemukan")
+                # Pilih Bank BCA langsung
+                bca_option = page.locator("text=/bca|BCA/i").first
                 await bca_option.click()
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(500)  # Kurangi
 
-                # Klik tombol konfirmasi pembayaran
-                confirm_btn = None
-                for text in ["bayar", "konfirmasi", "pay now", "bayar sekarang"]:
-                    try:
-                        confirm_btn = page.get_by_role("button").filter(has_text=re.compile(text, re.I)).first
-                        await confirm_btn.wait_for(state="visible", timeout=5000)
-                        print(f"✅ Tombol konfirmasi ditemukan: {text}")
-                        break
-                    except:
-                        continue
-                if confirm_btn is None:
-                    raise Exception("Tombol konfirmasi tidak ditemukan")
+                # Klik tombol konfirmasi pembayaran langsung
+                confirm_btn = page.get_by_role("button").filter(has_text=re.compile(r"bayar|konfirmasi", re.I)).first
                 await confirm_btn.click()
-                await page.wait_for_timeout(5000)
-                print(f"✅ Tombol konfirmasi diklik untuk {item_name}")
+                await page.wait_for_timeout(2000)  # Tunggu konfirmasi
 
                 # Screenshot setelah checkout
                 screenshot_path = f"/tmp/checkout_{int(time.time())}.png"
                 await page.screenshot(path=screenshot_path, full_page=False)
 
                 message = f"""
-💳 FLASH SALE CHECKOUT BERHASIL (Transfer Bank BCA){color_text}
+💳 FLASH SALE CHECKOUT CEPAT BERHASIL (Transfer Bank BCA){color_text}
 Produk: <b>{item_name}</b>
 Harga: {price_text}
 Quantity: {quantity}
@@ -150,12 +91,12 @@ Link: {url}
 ✅ Sudah checkout dengan Transfer Bank BCA! Cek rekening BCA untuk detail pembayaran.
                 """.strip()
                 send_telegram_alert(config, message, screenshot_path)
-                print(f"✅ {item_name} → Checkout selesai!")
+                print(f"✅ {item_name} → Checkout cepat selesai!")
                 return
 
             except Exception as e:
-                print(f"❌ Gagal checkout {item_name}: {str(e)}")
-                # Jika gagal checkout, tetap kirim notif add to cart
+                print(f"❌ Gagal checkout cepat {item_name}: {str(e)}")
+                # Jika gagal, tetap kirim notif add to cart
                 pass
 
         # Screenshot untuk bukti (kirim ke Telegram)
