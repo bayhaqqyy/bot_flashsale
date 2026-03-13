@@ -160,7 +160,7 @@ def next_sleep(item: WatchItem, interval_seconds: int, warmup_minutes: int, now:
     return float(interval_seconds)
 
 
-async def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict):
+async def alert(item: WatchItem, reasons: list[str], prices: list[str], config: dict, context):
     reasons_text = ", ".join(reasons)
     prices_text = ", ".join(prices) if prices else "tidak terdeteksi"
     print(f"[ALERT] {item.name}: ACTIVE ({reasons_text})")
@@ -184,11 +184,11 @@ Link: {item.url}
             max_p = config["price_range"]["max"]
             if min_p <= price_int <= max_p and config.get("auto_add_to_cart", False):
                 print(f"💰 Harga Rp{price_int} masuk range → Add to Cart!")
-                pw, browser, context, page = await get_logged_in_browser(headless=True)
-                await add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
-                await context.close()
-                await browser.close()
-                await pw.stop()
+                page = await context.new_page()
+                try:
+                    await add_to_cart(page, item.url, config.get("quantity", 1), config, item.name)
+                finally:
+                    await page.close()
                 return
         except:
             pass
@@ -316,7 +316,7 @@ async def run(
                             if result.is_active:
                                 suffix = f" | harga: {', '.join(result.prices[:3])}" if result.prices else ""
                                 print(f"[{timestamp}] {item.name}: ACTIVE{suffix}")
-                                await alert(item, result.reasons, result.prices, config)
+                                await alert(item, result.reasons, result.prices, config, context)
                                 pending.pop(item.name, None)
                                 continue
                             if item.page_type == "product" and result.prices:
