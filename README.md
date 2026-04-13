@@ -35,6 +35,18 @@ Opsi penting:
 python flashsale_watcher.py --config config.json --interval 10 --timeout 8
 ```
 
+Add-to-cart langsung dari CLI dengan cookie atau Playwright storage-state:
+
+```powershell
+python cart_adder.py --url "https://shopee.co.id/produk-anda" --name "Produk A" --quantity 1 --auth cookies/cookies.json --fast
+```
+
+Catatan mode `--fast`:
+- Memakai cookie/storage-state yang sudah login.
+- Timeout dipendekkan dan screenshot/Telegram dimatikan.
+- Gambar, media, dan font diblok agar load lebih ringan.
+- Target sekitar 1 detik hanya mungkin kalau session valid, halaman cepat, dan tombol sudah tersedia tanpa challenge tambahan.
+
 Mode file lokal:
 
 ```powershell

@@ -1,7 +1,4 @@
-from logging import config
 import re
-from browser import get_logged_in_browser, fetch_page_html
-from cart_adder import add_to_cart
 from telegram_notifier import send_telegram_alert
 import argparse
 import html
@@ -183,6 +180,8 @@ Link: {item.url}
             min_p = config["price_range"]["min"]
             max_p = config["price_range"]["max"]
             if min_p <= price_int <= max_p and config.get("auto_add_to_cart", False):
+                from cart_adder import add_to_cart
+
                 print(f"💰 Harga Rp{price_int} masuk range → Add to Cart!")
                 page = await context.new_page()
                 try:
@@ -269,6 +268,8 @@ async def run(
     headed: bool = False,
     debug_text: bool = False,
 ) -> int:
+    from browser import fetch_page_html, get_logged_in_browser
+
     # Fast mode: kurangi interval dan timeout untuk lebih cepet
     if config.get("fast_mode", False):
         interval_seconds = min(interval_seconds, 1)  # Max 1s
