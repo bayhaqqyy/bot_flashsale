@@ -27,6 +27,11 @@ BUY_NOW_PATTERN = re.compile(r"beli sekarang|buy now", re.I)
 SUCCESS_PATTERN = re.compile(r"berhasil.*(keranjang|ditambahkan)", re.I)
 
 
+def safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", value.strip().lower())
+    return cleaned.strip("_") or "produk"
+
+
 def _clean_cookie(raw: dict[str, Any]) -> dict[str, Any]:
     cookie = {
         "name": raw["name"],
@@ -300,6 +305,34 @@ async def _wait_checkout_result(page: Page, *, timeout_ms: int) -> tuple[bool, s
     return False, f"URL belum masuk checkout: {page.url}"
 
 
+async def dump_debug(page: Page, item_name: str, label: str, directory: str = "debug") -> dict[str, str]:
+    output_dir = Path(directory)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    base = output_dir / f"{safe_filename(item_name)}_{label}_{stamp}"
+    paths = {
+        "png": str(base.with_suffix(".png")),
+        "html": str(base.with_suffix(".html")),
+        "json": str(base.with_suffix(".json")),
+    }
+    await page.screenshot(path=paths["png"], full_page=True)
+    base.with_suffix(".html").write_text(await page.content(), encoding="utf-8")
+    base.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "url": page.url,
+                "title": await page.title(),
+                "label": label,
+                "item_name": item_name,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return paths
+
+
 async def add_to_cart(
     page: Page,
     url: str,
@@ -309,6 +342,7 @@ async def add_to_cart(
     *,
     fast: bool | None = None,
     direct_checkout: bool = False,
+    debug_dump: bool = False,
 ) -> bool:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -368,8 +402,16 @@ async def add_to_cart(
             print("Auto checkout final tidak dijalankan. Script berhenti sebelum tombol pembayaran/pesanan.")
 
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        action_text = "checkout page" if direct_checkout else "add-to-cart"
-        print(f"[OK] {item_name} {action_text} selesai dalam {elapsed_ms} ms")
+        if direct_checkout:
+            print(f"[READY] {item_name} sudah sampai halaman checkout dalam {elapsed_ms} ms. Belum dibeli/belum dibuat pesanan.")
+        else:
+            print(f"[OK] {item_name} add-to-cart selesai dalam {elapsed_ms} ms")
+
+        if debug_dump:
+            paths = await dump_debug(page, item_name, "success")
+            print(f"[DEBUG] Screenshot: {paths['png']}")
+            print(f"[DEBUG] HTML: {paths['html']}")
+            print(f"[DEBUG] Meta: {paths['json']}")
 
         if config.get("telegram_enabled", True) and not fast:
             screenshot_path = f"/tmp/cart_{int(time.time())}.png"
@@ -388,6 +430,14 @@ async def add_to_cart(
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         print(f"[ERR] Gagal add-to-cart {item_name} setelah {elapsed_ms} ms: {exc}")
+        if config.get("debug_dump", False):
+            try:
+                paths = await dump_debug(page, item_name, "error")
+                print(f"[DEBUG] Screenshot: {paths['png']}")
+                print(f"[DEBUG] HTML: {paths['html']}")
+                print(f"[DEBUG] Meta: {paths['json']}")
+            except Exception as dump_exc:
+                print(f"[DEBUG] Gagal dump halaman: {dump_exc}")
         if config.get("telegram_enabled", True) and not fast:
             try:
                 screenshot_path = f"/tmp/cart_err_{int(time.time())}.png"
@@ -410,7 +460,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkout",
         action="store_true",
-        help="Klik Beli Sekarang dan berhenti di halaman checkout, tanpa menekan tombol final pesanan/bayar.",
+        help="Klik Beli Sekarang dan berhenti di halaman checkout. Tidak membuat pesanan final.",
     )
     parser.add_argument(
         "--hold",
@@ -418,6 +468,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Tahan browser selama N detik setelah berhasil. Berguna dengan --headed untuk lanjut manual.",
     )
+    parser.add_argument("--debug-dump", action="store_true", help="Simpan screenshot, HTML, dan metadata halaman terakhir.")
     return parser.parse_args()
 
 
@@ -430,6 +481,7 @@ def load_optional_config(path: str | None) -> dict[str, Any]:
 async def run_cli(args: argparse.Namespace) -> int:
     config = load_optional_config(args.config)
     config.setdefault("telegram_enabled", False)
+    config["debug_dump"] = args.debug_dump
     pw, browser, context = await create_cli_context(
         auth_path=args.auth,
         headless=not args.headed,
@@ -446,6 +498,7 @@ async def run_cli(args: argparse.Namespace) -> int:
                 args.name,
                 fast=args.fast,
                 direct_checkout=args.checkout,
+                debug_dump=args.debug_dump,
             )
             if ok and args.hold > 0:
                 print(f"[HOLD] Browser ditahan {args.hold} detik.")
