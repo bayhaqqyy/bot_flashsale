@@ -23,6 +23,7 @@ DEFAULT_USER_AGENT = (
 )
 
 ADD_TO_CART_PATTERN = re.compile(r"masukkan ke keranjang|add to cart|keranjang", re.I)
+BUY_NOW_PATTERN = re.compile(r"beli sekarang|buy now", re.I)
 SUCCESS_PATTERN = re.compile(r"berhasil.*(keranjang|ditambahkan)", re.I)
 
 
@@ -275,6 +276,41 @@ async def _wait_add_to_cart_result(page: Page, *, timeout_ms: int) -> tuple[bool
     return False, "tidak ada konfirmasi berhasil dari halaman"
 
 
+async def _wait_checkout_result(page: Page, *, timeout_ms: int) -> tuple[bool, str]:
+    deadline = time.perf_counter() + (timeout_ms / 1000)
+    checkout_markers = [
+        "checkout",
+        "ringkasan pesanan",
+        "alamat pengiriman",
+        "metode pembayaran",
+        "buat pesanan",
+        "place order",
+    ]
+    failure_markers = [
+        "pilih variasi",
+        "pilih opsi",
+        "silakan pilih",
+        "stok habis",
+        "masuk untuk",
+        "login",
+    ]
+    while time.perf_counter() < deadline:
+        current_url = page.url.lower()
+        if "checkout" in current_url:
+            return True, "halaman checkout terbuka"
+
+        body_text = await page.locator("body").inner_text(timeout=700)
+        normalized = re.sub(r"\s+", " ", body_text).lower()
+        for marker in checkout_markers:
+            if marker in normalized:
+                return True, marker
+        for marker in failure_markers:
+            if marker in normalized:
+                return False, marker
+        await page.wait_for_timeout(150)
+    return False, "tidak ada konfirmasi halaman checkout"
+
+
 async def add_to_cart(
     page: Page,
     url: str,
@@ -283,6 +319,7 @@ async def add_to_cart(
     item_name: str,
     *,
     fast: bool | None = None,
+    direct_checkout: bool = False,
 ) -> bool:
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
@@ -297,7 +334,18 @@ async def add_to_cart(
 
         selected_color = await _try_select_color(page)
 
-        if fast:
+        if direct_checkout and fast:
+            clicked_button = await _click_button_by_text_mouse(
+                page,
+                ["beli sekarang", "buy now"],
+                timeout_ms=2500,
+            )
+            print(f"[CLICK] Tombol: {clicked_button['text']}")
+        elif direct_checkout:
+            buy_btn = page.get_by_role("button").filter(has_text=BUY_NOW_PATTERN).first
+            await buy_btn.wait_for(state="visible", timeout=10000)
+            await _fast_click(buy_btn, timeout=15000)
+        elif fast:
             clicked_button = await _click_button_by_text_mouse(
                 page,
                 ["masukkan ke keranjang", "masukkan keranjang", "add to cart"],
@@ -319,15 +367,20 @@ async def add_to_cart(
         except PlaywrightTimeoutError:
             pass
 
-        success, result_reason = await _wait_add_to_cart_result(page, timeout_ms=1800 if fast else 8000)
+        if direct_checkout:
+            success, result_reason = await _wait_checkout_result(page, timeout_ms=2500 if fast else 10000)
+        else:
+            success, result_reason = await _wait_add_to_cart_result(page, timeout_ms=1800 if fast else 8000)
         if not success:
-            raise RuntimeError(f"Klik terkirim, tapi belum terkonfirmasi masuk cart: {result_reason}")
+            target = "checkout" if direct_checkout else "masuk cart"
+            raise RuntimeError(f"Klik terkirim, tapi belum terkonfirmasi {target}: {result_reason}")
 
         if config.get("auto_checkout", False):
-            print("Auto checkout tidak dijalankan di mode ini. Script hanya add-to-cart.")
+            print("Auto checkout final tidak dijalankan. Script berhenti sebelum tombol pembayaran/pesanan.")
 
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        print(f"[OK] {item_name} add-to-cart selesai dalam {elapsed_ms} ms")
+        action_text = "checkout page" if direct_checkout else "add-to-cart"
+        print(f"[OK] {item_name} {action_text} selesai dalam {elapsed_ms} ms")
 
         if config.get("telegram_enabled", True) and not fast:
             screenshot_path = f"/tmp/cart_{int(time.time())}.png"
@@ -365,6 +418,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default=None, help="Config JSON opsional untuk Telegram/setting lain.")
     parser.add_argument("--headed", action="store_true", help="Tampilkan browser.")
     parser.add_argument("--fast", action="store_true", help="Mode cepat: timeout pendek, tanpa screenshot/Telegram.")
+    parser.add_argument(
+        "--checkout",
+        action="store_true",
+        help="Klik Beli Sekarang dan berhenti di halaman checkout, tanpa menekan tombol final pesanan/bayar.",
+    )
     return parser.parse_args()
 
 
@@ -392,6 +450,7 @@ async def run_cli(args: argparse.Namespace) -> int:
                 config,
                 args.name,
                 fast=args.fast,
+                direct_checkout=args.checkout,
             )
             return 0 if ok else 1
         finally:
