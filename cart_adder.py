@@ -278,14 +278,6 @@ async def _wait_add_to_cart_result(page: Page, *, timeout_ms: int) -> tuple[bool
 
 async def _wait_checkout_result(page: Page, *, timeout_ms: int) -> tuple[bool, str]:
     deadline = time.perf_counter() + (timeout_ms / 1000)
-    checkout_markers = [
-        "checkout",
-        "ringkasan pesanan",
-        "alamat pengiriman",
-        "metode pembayaran",
-        "buat pesanan",
-        "place order",
-    ]
     failure_markers = [
         "pilih variasi",
         "pilih opsi",
@@ -296,19 +288,16 @@ async def _wait_checkout_result(page: Page, *, timeout_ms: int) -> tuple[bool, s
     ]
     while time.perf_counter() < deadline:
         current_url = page.url.lower()
-        if "checkout" in current_url:
-            return True, "halaman checkout terbuka"
+        if "/checkout" in current_url or "shopee.co.id/checkout" in current_url:
+            return True, f"halaman checkout terbuka: {page.url}"
 
         body_text = await page.locator("body").inner_text(timeout=700)
         normalized = re.sub(r"\s+", " ", body_text).lower()
-        for marker in checkout_markers:
-            if marker in normalized:
-                return True, marker
         for marker in failure_markers:
             if marker in normalized:
                 return False, marker
         await page.wait_for_timeout(150)
-    return False, "tidak ada konfirmasi halaman checkout"
+    return False, f"URL belum masuk checkout: {page.url}"
 
 
 async def add_to_cart(
@@ -423,6 +412,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Klik Beli Sekarang dan berhenti di halaman checkout, tanpa menekan tombol final pesanan/bayar.",
     )
+    parser.add_argument(
+        "--hold",
+        type=int,
+        default=0,
+        help="Tahan browser selama N detik setelah berhasil. Berguna dengan --headed untuk lanjut manual.",
+    )
     return parser.parse_args()
 
 
@@ -452,6 +447,9 @@ async def run_cli(args: argparse.Namespace) -> int:
                 fast=args.fast,
                 direct_checkout=args.checkout,
             )
+            if ok and args.hold > 0:
+                print(f"[HOLD] Browser ditahan {args.hold} detik.")
+                await page.wait_for_timeout(args.hold * 1000)
             return 0 if ok else 1
         finally:
             await page.close()
