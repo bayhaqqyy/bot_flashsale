@@ -150,6 +150,43 @@ async def _fast_click(locator: Any, *, timeout: int, prefer_dom: bool = False) -
                 ) from first_error
 
 
+async def _click_button_by_text_js(page: Page, labels: list[str], *, timeout_ms: int) -> bool:
+    deadline = time.perf_counter() + (timeout_ms / 1000)
+    labels = [label.lower() for label in labels]
+    while time.perf_counter() < deadline:
+        clicked = await page.evaluate(
+            """labels => {
+                const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+                const isVisible = element => {
+                    const rect = element.getBoundingClientRect();
+                    const style = window.getComputedStyle(element);
+                    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                };
+                const target = candidates.find(element => {
+                    const text = (element.innerText || element.textContent || '').trim().toLowerCase();
+                    const disabled = element.disabled || element.getAttribute('aria-disabled') === 'true';
+                    return !disabled && isVisible(element) && labels.some(label => text.includes(label));
+                });
+                if (!target) {
+                    return false;
+                }
+                target.scrollIntoView({block: 'center', inline: 'center'});
+                target.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, cancelable: true, view: window}));
+                target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, view: window}));
+                target.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, cancelable: true, view: window}));
+                target.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window}));
+                target.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                target.click();
+                return true;
+            }""",
+            labels,
+        )
+        if clicked:
+            return True
+        await page.wait_for_timeout(100)
+    return False
+
+
 async def add_to_cart(
     page: Page,
     url: str,
@@ -172,9 +209,19 @@ async def add_to_cart(
 
         selected_color = await _try_select_color(page)
 
-        add_btn = page.get_by_role("button").filter(has_text=ADD_TO_CART_PATTERN).first
-        await add_btn.wait_for(state="visible", timeout=2000 if fast else 10000)
-        await _fast_click(add_btn, timeout=1200 if fast else 15000, prefer_dom=fast)
+        if fast:
+            clicked = await _click_button_by_text_js(
+                page,
+                ["masukkan ke keranjang", "add to cart", "keranjang"],
+                timeout_ms=2500,
+            )
+            if not clicked:
+                raise RuntimeError("Tombol add-to-cart tidak ditemukan oleh scan DOM cepat.")
+        else:
+            add_btn = page.get_by_role("button").filter(has_text=ADD_TO_CART_PATTERN).first
+            await add_btn.wait_for(state="visible", timeout=10000)
+            await _fast_click(add_btn, timeout=15000)
+
         if fast:
             await page.wait_for_timeout(150)
 
