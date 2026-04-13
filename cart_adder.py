@@ -107,6 +107,26 @@ async def _try_select_color(page: Page) -> str | None:
     return None
 
 
+async def _fast_click(locator: Any, *, timeout: int) -> None:
+    """Click with fallbacks for animated buttons that never become stable fast enough."""
+    try:
+        await locator.click(timeout=timeout)
+        return
+    except Exception as first_error:
+        try:
+            await locator.click(timeout=500, force=True)
+            return
+        except Exception:
+            try:
+                handle = await locator.element_handle(timeout=500)
+                if handle is None:
+                    raise first_error
+                await handle.evaluate("element => element.click()")
+                return
+            except Exception:
+                raise first_error
+
+
 async def add_to_cart(
     page: Page,
     url: str,
@@ -131,7 +151,7 @@ async def add_to_cart(
 
         add_btn = page.get_by_role("button").filter(has_text=ADD_TO_CART_PATTERN).first
         await add_btn.wait_for(state="visible", timeout=2000 if fast else 10000)
-        await add_btn.click(timeout=1500 if fast else 15000)
+        await _fast_click(add_btn, timeout=1200 if fast else 15000)
 
         qty_selector = page.locator("input[type='number'], [aria-label*='jumlah'], [placeholder*='jumlah']").first
         try:
