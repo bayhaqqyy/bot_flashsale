@@ -107,24 +107,47 @@ async def _try_select_color(page: Page) -> str | None:
     return None
 
 
-async def _fast_click(locator: Any, *, timeout: int) -> None:
+async def _fast_click(locator: Any, *, timeout: int, prefer_dom: bool = False) -> None:
     """Click with fallbacks for animated buttons that never become stable fast enough."""
+    if prefer_dom:
+        try:
+            await locator.evaluate(
+                """element => {
+                    element.scrollIntoView({block: 'center', inline: 'center'});
+                    element.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, view: window}));
+                    element.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window}));
+                    element.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                    element.click();
+                }""",
+                timeout=timeout,
+            )
+            return
+        except Exception as dom_error:
+            first_error = dom_error
+    else:
+        first_error = None
+
     try:
         await locator.click(timeout=timeout)
         return
-    except Exception as first_error:
+    except Exception as click_error:
+        if first_error is None:
+            first_error = click_error
         try:
             await locator.click(timeout=500, force=True)
             return
-        except Exception:
+        except Exception as force_error:
             try:
                 handle = await locator.element_handle(timeout=500)
                 if handle is None:
                     raise first_error
                 await handle.evaluate("element => element.click()")
                 return
-            except Exception:
-                raise first_error
+            except Exception as handle_error:
+                raise RuntimeError(
+                    "Semua metode klik gagal: "
+                    f"dom/click={first_error}; force={force_error}; handle={handle_error}"
+                ) from first_error
 
 
 async def add_to_cart(
@@ -151,7 +174,9 @@ async def add_to_cart(
 
         add_btn = page.get_by_role("button").filter(has_text=ADD_TO_CART_PATTERN).first
         await add_btn.wait_for(state="visible", timeout=2000 if fast else 10000)
-        await _fast_click(add_btn, timeout=1200 if fast else 15000)
+        await _fast_click(add_btn, timeout=1200 if fast else 15000, prefer_dom=fast)
+        if fast:
+            await page.wait_for_timeout(150)
 
         qty_selector = page.locator("input[type='number'], [aria-label*='jumlah'], [placeholder*='jumlah']").first
         try:
