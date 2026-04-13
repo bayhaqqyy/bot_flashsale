@@ -187,6 +187,94 @@ async def _click_button_by_text_js(page: Page, labels: list[str], *, timeout_ms:
     return False
 
 
+async def _button_rect_by_text(page: Page, labels: list[str], *, timeout_ms: int) -> dict[str, Any] | None:
+    deadline = time.perf_counter() + (timeout_ms / 1000)
+    labels = [label.lower() for label in labels]
+    while time.perf_counter() < deadline:
+        rect = await page.evaluate(
+            """labels => {
+                const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+                const isVisible = element => {
+                    const rect = element.getBoundingClientRect();
+                    const style = window.getComputedStyle(element);
+                    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+                };
+                const scored = candidates
+                    .map(element => {
+                        const text = (element.innerText || element.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                        const disabled = element.disabled || element.getAttribute('aria-disabled') === 'true';
+                        if (disabled || !isVisible(element)) return null;
+                        const index = labels.findIndex(label => text.includes(label));
+                        if (index === -1) return null;
+                        return {element, text, score: index};
+                    })
+                    .filter(Boolean)
+                    .sort((a, b) => a.score - b.score || b.text.length - a.text.length);
+
+                if (!scored.length) return null;
+
+                const target = scored[0].element;
+                target.scrollIntoView({block: 'center', inline: 'center'});
+                const box = target.getBoundingClientRect();
+                return {
+                    x: box.left + box.width / 2,
+                    y: box.top + box.height / 2,
+                    width: box.width,
+                    height: box.height,
+                    text: scored[0].text
+                };
+            }""",
+            labels,
+        )
+        if rect:
+            return rect
+        await page.wait_for_timeout(100)
+    return None
+
+
+async def _click_button_by_text_mouse(page: Page, labels: list[str], *, timeout_ms: int) -> dict[str, Any]:
+    rect = await _button_rect_by_text(page, labels, timeout_ms=timeout_ms)
+    if rect is None:
+        raise RuntimeError("Tombol add-to-cart tidak ditemukan oleh scan DOM cepat.")
+
+    x = float(rect["x"])
+    y = float(rect["y"])
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.wait_for_timeout(35)
+    await page.mouse.up()
+    return rect
+
+
+async def _wait_add_to_cart_result(page: Page, *, timeout_ms: int) -> tuple[bool, str]:
+    deadline = time.perf_counter() + (timeout_ms / 1000)
+    success_markers = [
+        "berhasil ditambahkan",
+        "berhasil masuk",
+        "ditambahkan ke keranjang",
+        "added to cart",
+    ]
+    failure_markers = [
+        "pilih variasi",
+        "pilih opsi",
+        "silakan pilih",
+        "stok habis",
+        "masuk untuk",
+        "login",
+    ]
+    while time.perf_counter() < deadline:
+        body_text = await page.locator("body").inner_text(timeout=700)
+        normalized = re.sub(r"\s+", " ", body_text).lower()
+        for marker in success_markers:
+            if marker in normalized:
+                return True, marker
+        for marker in failure_markers:
+            if marker in normalized:
+                return False, marker
+        await page.wait_for_timeout(150)
+    return False, "tidak ada konfirmasi berhasil dari halaman"
+
+
 async def add_to_cart(
     page: Page,
     url: str,
@@ -210,13 +298,12 @@ async def add_to_cart(
         selected_color = await _try_select_color(page)
 
         if fast:
-            clicked = await _click_button_by_text_js(
+            clicked_button = await _click_button_by_text_mouse(
                 page,
-                ["masukkan ke keranjang", "add to cart", "keranjang"],
+                ["masukkan ke keranjang", "masukkan keranjang", "add to cart"],
                 timeout_ms=2500,
             )
-            if not clicked:
-                raise RuntimeError("Tombol add-to-cart tidak ditemukan oleh scan DOM cepat.")
+            print(f"[CLICK] Tombol: {clicked_button['text']}")
         else:
             add_btn = page.get_by_role("button").filter(has_text=ADD_TO_CART_PATTERN).first
             await add_btn.wait_for(state="visible", timeout=10000)
@@ -232,15 +319,9 @@ async def add_to_cart(
         except PlaywrightTimeoutError:
             pass
 
-        try:
-            await page.locator("body").filter(has_text=SUCCESS_PATTERN).wait_for(
-                state="visible",
-                timeout=800 if fast else 8000,
-            )
-            success = True
-        except Exception:
-            # If the click did not raise, the platform may still process it without a toast.
-            success = True
+        success, result_reason = await _wait_add_to_cart_result(page, timeout_ms=1800 if fast else 8000)
+        if not success:
+            raise RuntimeError(f"Klik terkirim, tapi belum terkonfirmasi masuk cart: {result_reason}")
 
         if config.get("auto_checkout", False):
             print("Auto checkout tidak dijalankan di mode ini. Script hanya add-to-cart.")
