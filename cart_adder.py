@@ -315,15 +315,35 @@ async def dump_debug(page: Page, item_name: str, label: str, directory: str = "d
         "html": str(base.with_suffix(".html")),
         "json": str(base.with_suffix(".json")),
     }
-    await page.screenshot(path=paths["png"], full_page=True)
-    base.with_suffix(".html").write_text(await page.content(), encoding="utf-8")
+    screenshot_error = None
+    try:
+        await page.screenshot(path=paths["png"], full_page=False, timeout=5000)
+    except Exception as exc:
+        screenshot_error = str(exc)
+        paths.pop("png", None)
+
+    html_error = None
+    try:
+        base.with_suffix(".html").write_text(await page.content(), encoding="utf-8")
+    except Exception as exc:
+        html_error = str(exc)
+        paths.pop("html", None)
+
+    title = ""
+    try:
+        title = await page.title()
+    except Exception:
+        pass
+
     base.with_suffix(".json").write_text(
         json.dumps(
             {
                 "url": page.url,
-                "title": await page.title(),
+                "title": title,
                 "label": label,
                 "item_name": item_name,
+                "screenshot_error": screenshot_error,
+                "html_error": html_error,
             },
             ensure_ascii=False,
             indent=2,
@@ -331,6 +351,11 @@ async def dump_debug(page: Page, item_name: str, label: str, directory: str = "d
         encoding="utf-8",
     )
     return paths
+
+
+def is_traffic_verification_url(url: str) -> bool:
+    lowered = url.lower()
+    return "/verify/traffic" in lowered or "scene=crawler" in lowered or "anti_bot_tracking_id=" in lowered
 
 
 async def add_to_cart(
@@ -354,6 +379,8 @@ async def add_to_cart(
     try:
         page.set_default_timeout(1500 if fast else 10000)
         await page.goto(url, wait_until="domcontentloaded", timeout=8000 if fast else 45000)
+        if is_traffic_verification_url(page.url):
+            raise RuntimeError(f"Shopee mengalihkan ke verifikasi traffic/anti-bot: {page.url}")
 
         selected_color = await _try_select_color(page)
 
@@ -382,6 +409,8 @@ async def add_to_cart(
 
         if fast:
             await page.wait_for_timeout(150)
+        if is_traffic_verification_url(page.url):
+            raise RuntimeError(f"Shopee mengalihkan ke verifikasi traffic/anti-bot: {page.url}")
 
         qty_selector = page.locator("input[type='number'], [aria-label*='jumlah'], [placeholder*='jumlah']").first
         try:
@@ -409,8 +438,10 @@ async def add_to_cart(
 
         if debug_dump:
             paths = await dump_debug(page, item_name, "success")
-            print(f"[DEBUG] Screenshot: {paths['png']}")
-            print(f"[DEBUG] HTML: {paths['html']}")
+            if "png" in paths:
+                print(f"[DEBUG] Screenshot: {paths['png']}")
+            if "html" in paths:
+                print(f"[DEBUG] HTML: {paths['html']}")
             print(f"[DEBUG] Meta: {paths['json']}")
 
         if config.get("telegram_enabled", True) and not fast:
@@ -433,8 +464,10 @@ async def add_to_cart(
         if config.get("debug_dump", False):
             try:
                 paths = await dump_debug(page, item_name, "error")
-                print(f"[DEBUG] Screenshot: {paths['png']}")
-                print(f"[DEBUG] HTML: {paths['html']}")
+                if "png" in paths:
+                    print(f"[DEBUG] Screenshot: {paths['png']}")
+                if "html" in paths:
+                    print(f"[DEBUG] HTML: {paths['html']}")
                 print(f"[DEBUG] Meta: {paths['json']}")
             except Exception as dump_exc:
                 print(f"[DEBUG] Gagal dump halaman: {dump_exc}")
